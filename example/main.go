@@ -20,12 +20,14 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	for {
-		b := make([]byte, 16*1024)
-		n, err := peer.RecvData(b)
-		fmt.Println(string(b[:n]), n, err)
-		if err != nil {
-			break
+	/*
+		for {
+			b := make([]byte, 16*1024)
+			n, err := peer.RecvData(b)
+			fmt.Println(string(b[:n]), n, err)
+			if err != nil {
+				break
+			}
 		}
-	}
+	*/
 }
