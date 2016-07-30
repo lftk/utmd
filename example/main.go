@@ -8,26 +8,15 @@ import (
 )
 
 func main() {
-	peer := new(utmd.Peer)
-	err := peer.Dial("95.213.229.154:54949")
+	tor, _ := dht.ResolveID("497673c9d0ca952492dc3a092115ac587e3a01d9")
+	p, err := utmd.Handshake("111.182.197.21:11101", tor.Bytes())
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	tor, _ := dht.ResolveID("e94e84f2919507ea99f61cb3d733e266e047b6b2")
-	err = peer.Handshake(tor)
-	if err != nil {
+	defer p.Close()
+	fmt.Println("----------")
+	if err = p.Download(); err != nil {
 		fmt.Println(err)
-		return
 	}
-	/*
-		for {
-			b := make([]byte, 16*1024)
-			n, err := peer.RecvData(b)
-			fmt.Println(string(b[:n]), n, err)
-			if err != nil {
-				break
-			}
-		}
-	*/
 }
