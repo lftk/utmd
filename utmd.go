@@ -79,6 +79,16 @@ func Handshake(addr string, tor []byte) (p *Peer, err error) {
 	return
 }
 
+func callback(cb func(down, total int), down, total int) {
+	if cb != nil {
+		if down < total {
+			cb(down, total)
+		} else {
+			cb(total, total)
+		}
+	}
+}
+
 // Download metadata of torrent(tor infohash)
 func Download(addr string, tor []byte, cb func(down, total int)) (b []byte, err error) {
 	p, err := Handshake(addr, tor)
@@ -86,21 +96,15 @@ func Download(addr string, tor []byte, cb func(down, total int)) (b []byte, err 
 		return
 	}
 	defer p.Close()
+	callback(cb, 0, p.Size())
 	if size := p.Size(); size > 0 {
 		b = make([]byte, size)
-		if cb != nil {
-			cb(0, size)
-		}
-		for i, n := 0, 0; i < p.NumBlocks(); i++ {
-			data, err := p.ReadBlock(i)
+		for i := 0; i < p.NumBlocks(); i++ {
+			_, err := p.ReadBlock(i, b[i*16384:])
 			if err != nil {
 				return nil, err
 			}
-			copy(b[n:], data)
-			n += len(data)
-			if cb != nil {
-				cb(n, size)
-			}
+			callback(cb, (i+1)*16384, size)
 		}
 	}
 	return

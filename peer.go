@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 
 	"github.com/zeebo/bencode"
@@ -46,7 +47,21 @@ func (p *Peer) readHeader() (n uint32, id, eid uint8, err error) {
 	return
 }
 
-func (p *Peer) readMessage(id uint8) (eid uint8, data []byte, err error) {
+func (p *Peer) readMessageEx(id, eid uint8, f func(io.Reader, uint32) (uint32, error)) (err error) {
+	var found bool
+	for !found {
+		err = p.readMessage(id, func(r io.Reader, eid2 uint8, size uint32) (uint32, error) {
+			if eid == eid2 {
+				found = true
+				return f(r, size)
+			}
+			return 0, nil
+		})
+	}
+	return
+}
+
+func (p *Peer) readMessage(id uint8, f func(io.Reader, uint8, uint32) (uint32, error)) (err error) {
 	var (
 		cnt       int
 		n0        uint32
@@ -58,17 +73,25 @@ LOOP:
 	if err != nil {
 		return
 	}
+	k := n - 2
 
 	if id == id2 {
-		if n > 2 {
-			data = make([]byte, n-2)
-			err = readMsgData(p.conn, data)
+		r, err := f(p.conn, eid, k)
+		if err != nil {
+			return err
 		}
-		return
+		k = k - r
 	}
 
-	if n > 2 {
-		discardMsgData(p.conn, int(n-2))
+	if k > 0 {
+		err = discardMsgData(p.conn, int(k))
+		if err != nil {
+			return err
+		}
+	}
+
+	if id == id2 {
+		return nil
 	}
 
 	if n0 != n || id0 != id2 || eid0 != eid {
@@ -78,15 +101,6 @@ LOOP:
 		return
 	}
 
-	goto LOOP
-}
-
-func (p *Peer) readMessageEx(id, eid uint8) (data []byte, err error) {
-LOOP:
-	eid2, data, err := p.readMessage(id)
-	if err != nil || eid == eid2 {
-		return
-	}
 	goto LOOP
 }
 
@@ -102,12 +116,16 @@ func (p *Peer) handshake() (err error) {
 		return
 	}
 	// recv handshake message
-	i, b, err := p.readMessage(20)
+	var b []byte
+	err = p.readMessageEx(20, 0, func(r io.Reader, size uint32) (uint32, error) {
+		var err error
+		if size > 0 {
+			b = make([]byte, size)
+			err = readMsgData(r, b)
+		}
+		return size, err
+	})
 	if err != nil {
-		return
-	}
-	if i != 0 {
-		err = errors.New("handshake failure")
 		return
 	}
 	var h struct {
@@ -142,7 +160,7 @@ func (p *Peer) NumBlocks() (n int) {
 }
 
 // ReadBlock download block
-func (p *Peer) ReadBlock(i int) (b []byte, err error) {
+func (p *Peer) ReadBlock(i int, b []byte) (n int, err error) {
 	// request metadata
 	var md metadata
 	md.Type = 0
@@ -156,13 +174,51 @@ func (p *Peer) ReadBlock(i int) (b []byte, err error) {
 		return
 	}
 	// download metadata
-	data, err = p.readMessageEx(20, 1)
-	if err != nil {
+	err = p.readMessageEx(20, 1, func(r io.Reader, size uint32) (n uint32, err error) {
+		defer func() {
+			if x := recover(); x != nil {
+				err = errors.New("happen panic when read message data")
+			}
+		}()
+
+		mn := min(size, 64)
+		mb := make([]byte, mn)
+		err = readMsgData(r, mb)
+		if err != nil {
+			return
+		}
+
+		i := bytes.Index(mb, []byte("ee"))
+		if i == -1 {
+			err = errors.New("read metadata failure")
+			return
+		}
+		m := new(metadata)
+		err = bencode.DecodeBytes(mb[:i+2], m)
+		if err != nil {
+			return
+		}
+		if m.Type != 1 {
+			err = errors.New("rejected the request")
+			return
+		}
+
+		n0 := uint32(i) + 2
+		if n0 < mn {
+			copy(b, mb[n0:])
+		}
+		n1 := mn - n0
+		n2 := min(size-n0, uint32(len(b)))
+		err = readMsgData(r, b[n1:n2])
+		n = n0 + n2
 		return
-	}
-	n := bytes.Index(data, []byte("ee"))
-	if n != -1 {
-		b = data[n+2:]
-	}
+	})
 	return
+}
+
+func min(n1, n2 uint32) uint32 {
+	if n1 < n2 {
+		return n1
+	}
+	return n2
 }
