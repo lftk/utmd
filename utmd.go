@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"net"
+	"time"
 )
 
 var (
@@ -27,7 +28,7 @@ func checkHandshake(h *handshake, tor []byte) error {
 }
 
 func hello(addr string, id, tor []byte) (net.Conn, []byte, error) {
-	conn, err := net.Dial("tcp", addr)
+	conn, err := net.DialTimeout("tcp", addr, time.Second*15)
 	if err != nil {
 		return nil, nil, err
 	}
