@@ -20,7 +20,7 @@ func checkHandshake(h *handshake, tor []byte) error {
 		return errors.New("unmatched info hash")
 	}
 	for i := 0; i < 8; i++ {
-		if r := reserved[i]; r != 0 && h.r[i] != r {
+		if r := reserved[i]; r != 0 && h.r[i]&r == 0 {
 			return errors.New("unmatched reserved")
 		}
 	}
@@ -100,8 +100,8 @@ func Download(addr string, tor []byte, cb func(down, total int)) (b []byte, err 
 	callback(cb, 0, p.Size())
 	if size := p.Size(); size > 0 {
 		b = make([]byte, size)
-		for i := 0; i < p.NumBlocks(); i++ {
-			_, err := p.ReadBlock(i, b[i*16384:])
+		for i := 0; i < p.NumChunk(); i++ {
+			_, err := p.ReadChunk(i, b[i*16384:])
 			if err != nil {
 				return nil, err
 			}

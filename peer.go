@@ -151,16 +151,16 @@ func (p *Peer) Size() int {
 	return p.size
 }
 
-// NumBlocks returns the number of block
-func (p *Peer) NumBlocks() (n int) {
+// NumChunk returns the number of chunk
+func (p *Peer) NumChunk() (n int) {
 	for s := p.size; s > 0; s -= 16384 {
 		n++
 	}
 	return
 }
 
-// ReadBlock download block
-func (p *Peer) ReadBlock(i int, b []byte) (n int, err error) {
+// ReadChunk download chunk
+func (p *Peer) ReadChunk(i int, b []byte) (n int, err error) {
 	// request metadata
 	var md metadata
 	md.Type = 0
